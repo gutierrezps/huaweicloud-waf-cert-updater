@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
 
 """
-Automation script to automate Huawei Cloud WAF certificate update from a
-local certificate file.
+Automation script to update Huawei Cloud WAF certificate from local
+certificate and private key files.
 
-Since the active certificate cannot be updated directly, two WAF certificates
-are expected: an active and a backup certificate.
+Since a certificate in use cannot be updated directly, two WAF certificates
+are expected: an active (in use) and a standby (idle) certificate.
 
 This script compares the local certificate file with the active certificate,
-and if they are different, the backup certificate is updated with the contents
-of the local certificate, and then the backup certificate is associated with
-all WAF domains currently associated with the active certificate.
+and if they are different, the standby certificate is updated with the
+contents of the local certificate, and then the standby certificate is
+associated with all WAF domains currently associated with the active
+certificate.
 
 Author: Gabriel Gutierrez Pereira Soares <gabrielg.soares@huawei.com>
 Created: 2025-04-01
-Last Modified: 2025-06-18
+Last Modified: 2025-06-23
 """
 
 import logging
@@ -41,10 +42,13 @@ class ExitCode(Enum):
     UPDATE_WAF_CERT_ERROR = -4
     BOTH_WAF_CERTS_IN_USE = -5
     SWITCHOVER_WAF_CERT_ERROR = -6
+    BUILD_WAF_CLIENT_ERROR = -7
     UNSPECIFIED = -99
 
 
 class LocalCertificate:
+    """Holds the contents of local certificate and private key files
+    """
     def __init__(self, content: str, private_key: str):
         self._content = content.strip()
         self._private_key = private_key.strip()
@@ -59,6 +63,8 @@ class LocalCertificate:
 
 
 class WafHost:
+    """In WAF, a host is a domain name configured in a specific WAF type
+    """
     def __init__(self, host: BindHost):
         self._id = host.id
         self._waf_type = host.waf_type
@@ -81,11 +87,12 @@ class WafHost:
 
 
 class WafCertificate:
+    """Holds the contents and details of a WAF certificate
+    """
     def __init__(self, show_cert_response: ShowCertificateResponse):
         self._id: str = show_cert_response.id
         self._name: str = show_cert_response.name.strip()
         self._content: str = show_cert_response.content.strip()
-        self._is_active = len(show_cert_response.bind_host) > 0
 
         self._configured_at: datetime = datetime.fromtimestamp(
             int(show_cert_response.timestamp / 1000))
@@ -111,7 +118,7 @@ class WafCertificate:
 
     @property
     def is_active(self):
-        return self._is_active
+        return len(self._hosts_bound) > 0
 
     @property
     def configured_at(self):
@@ -142,14 +149,14 @@ def check_required_env_vars():
         # Region code (e.g. "sa-brazil-1" for LA-Sao Paulo1)
         "CLOUD_REGION",
 
-        # ID of certificates A and B in WAF to be updated by this script
+        # ID of WAF certificates A and B to be updated by this script
         "WAF_CERTIFICATE_A_ID", "WAF_CERTIFICATE_B_ID",
     ]
 
     for var in REQUIRED:
-        var_value = os.getenv(var, "")
-        if len(var_value.strip()) == 0:
-            logging.error("environment variable '%s' not set or empty", var)
+        var_value = os.getenv(var, "").strip()
+        if len(var_value) == 0:
+            logging.error("Environment variable '%s' not set or empty", var)
             abort(ExitCode.ENV_ERROR)
 
 
@@ -168,10 +175,17 @@ def build_waf_client(ak: str, sk: str, region_code: str) -> WafClient:
     """
     credentials = BasicCredentials(ak, sk)
 
-    waf_client = WafClient.new_builder() \
-        .with_credentials(credentials) \
-        .with_region(WafRegion.value_of(region_code)) \
-        .build()
+    try:
+        waf_client = WafClient.new_builder() \
+            .with_credentials(credentials) \
+            .with_region(WafRegion.value_of(region_code)) \
+            .build()
+    except exceptions.SdkException:
+        logging.error("Failed to initialize WAF client, check AK/SK")
+        abort(ExitCode.BUILD_WAF_CLIENT_ERROR)
+    except KeyError:
+        logging.error("Failed to initialize WAF client, invalid CLOUD_REGION")
+        abort(ExitCode.BUILD_WAF_CLIENT_ERROR)
 
     return waf_client
 
@@ -201,7 +215,7 @@ def get_waf_certificate(
             "error_msg": e.error_msg
         }
         logging.error(
-            "failed to get certificate %s content - %s",
+            "Failed to get certificate %s content - %s",
             certificate_id, debug_info)
         abort(ExitCode.GET_WAF_CERT_ERROR)
 
@@ -249,7 +263,7 @@ def get_local_certificate() -> LocalCertificate:
                 file_lines = [line.strip() for line in tls_file.readlines()]
         except Exception:
             logging.error(
-                "failed to read local %s at %s", file_type, FILE_PATH)
+                "Failed to read local %s at %s", file_type, FILE_PATH)
             abort(ExitCode.GET_LOCAL_CERT_ERROR)
 
         # join lines in a single str, using "\n" to concatenate (same as WAF)
@@ -264,7 +278,8 @@ def get_local_certificate() -> LocalCertificate:
 def is_update_needed(
         waf_cert: WafCertificate,
         local_cert: LocalCertificate) -> bool:
-    """Returns True if waf_certificate is different than local_certificate.
+    """Returns True if waf_certificate content is different than local_cert
+    content.
 
     Args:
         waf_cert (WafCertificate): certificate currently configured
@@ -286,10 +301,10 @@ def update_waf_certificate(
     """Updates the WAF certificate content with the new certificate content.
 
     This API can only be invoked if the certificate is not in use. That's
-    the reason there is an active and a backup certificate.
+    the reason there is an active and a standby certificate.
 
     The active certificate is the one currently assigned to the WAF domains,
-    while the backup certificate is not associated to any domains.
+    while the standby certificate is not associated to any domains.
 
     If this API is invoked for a certificate that is assigned to a domain
     name, the following error code is returned:
@@ -297,7 +312,7 @@ def update_waf_certificate(
 
     Args:
         waf_client (WafClient): client instance returned by build_waf_client()
-        current_waf_certificate (WafCertificate): backup WAF certificate
+        current_waf_certificate (WafCertificate): standby WAF certificate
         new_certificate (LocalCertificate): local certificate
     """
     try:
@@ -315,22 +330,22 @@ def update_waf_certificate(
             "error_code": e.error_code,
             "error_msg": e.error_msg
         }
-        logging.error("failed to update certificate content - %s", debug_info)
+        logging.error("Failed to update certificate content - %s", debug_info)
         abort(ExitCode.UPDATE_WAF_CERT_ERROR)
 
 
 def switchover_waf_certificates(
         waf_client: WafClient,
         active_cert: WafCertificate,
-        backup_cert: WafCertificate):
-    """Assigns the backup certificate to all hosts currently associated with
+        standby_cert: WafCertificate):
+    """Assigns the standby certificate to all hosts currently associated with
     the active certificate.
 
     Args:
         waf_client (WafClient): client instance returned by build_waf_client()
         active_cert (WafCertificate): certificate currently assigned to
             WAF domains
-        backup_cert (WafCertificate): WAF certificate that should have been
+        standby_cert (WafCertificate): WAF certificate that should have been
             updated with the contents from the local certificate, using
             update_waf_certificate()
     """
@@ -346,12 +361,12 @@ def switchover_waf_certificates(
         elif host.is_premium_type:
             premium_host_ids.append(host.id)
         else:
-            logging.error("invalid WafHost type - %s", host.waf_type)
+            logging.error("Invalid WafHost type - %s", host.waf_type)
             abort(ExitCode.UNSPECIFIED)
 
     try:
         request = ApplyCertificateToHostRequest()
-        request.certificate_id = backup_cert.id
+        request.certificate_id = standby_cert.id
 
         if len(cloud_host_ids) > 0:
             request.body = ApplyCertificateToHostRequestBody(
@@ -370,7 +385,7 @@ def switchover_waf_certificates(
             "error_code": e.error_code,
             "error_msg": e.error_msg
         }
-        logging.error("failed to switchover certificate - %s", debug_info)
+        logging.error("Failed to switchover certificate - %s", debug_info)
         abort(ExitCode.SWITCHOVER_WAF_CERT_ERROR)
 
 
@@ -401,29 +416,29 @@ def main():
         abort(ExitCode.BOTH_WAF_CERTS_IN_USE)
     elif waf_cert_a.is_active:
         active_waf_cert = waf_cert_a
-        backup_waf_cert = waf_cert_b
+        standby_waf_cert = waf_cert_b
     else:
         active_waf_cert = waf_cert_b
-        backup_waf_cert = waf_cert_a
+        standby_waf_cert = waf_cert_a
 
     if not is_update_needed(active_waf_cert, local_cert):
         logging.info("Active WAF cert is the same as local cert")
         logging.info("No action is needed. Bye.")
         exit(0)
 
-    if backup_waf_cert.content != local_cert.content:
-        logging.info("Updating WAF certificate %s...", backup_waf_cert.name)
+    if standby_waf_cert.content != local_cert.content:
+        logging.info("Updating WAF certificate %s...", standby_waf_cert.name)
 
         update_waf_certificate(
             waf_client=waf_client,
-            current_waf_certificate=backup_waf_cert,
+            current_waf_certificate=standby_waf_cert,
             new_certificate=local_cert)
 
     else:
         logging.warning(
-            "backup cert is already updated, maybe switchover failed before")
+            "Standby cert is already updated, maybe switchover failed before")
 
-    switchover_waf_certificates(waf_client, active_waf_cert, backup_waf_cert)
+    switchover_waf_certificates(waf_client, active_waf_cert, standby_waf_cert)
 
     logging.info("Update and switchover performed successfully")
 
