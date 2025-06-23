@@ -127,7 +127,7 @@ class WafCertificate:
 
 
 def abort(exit_code: ExitCode):
-    logging.error(f"Aborting, reason: {exit_code.name}")
+    logging.error("Aborting, reason: %s", exit_code.name)
     exit(exit_code.value)
 
 
@@ -149,7 +149,7 @@ def check_required_env_vars():
     for var in REQUIRED:
         var_value = os.getenv(var, "")
         if len(var_value.strip()) == 0:
-            logging.error(f"environment variable '{var}' not set or empty")
+            logging.error("environment variable '%s' not set or empty", var)
             abort(ExitCode.ENV_ERROR)
 
 
@@ -200,12 +200,15 @@ def get_waf_certificate(
             "error_code": e.error_code,
             "error_msg": e.error_msg
         }
-        logging.error("failed to get certificate content -", debug_info)
+        logging.error(
+            "failed to get certificate %s content - %s",
+            certificate_id, debug_info)
         abort(ExitCode.GET_WAF_CERT_ERROR)
 
     waf_cert = WafCertificate(response)
 
-    msg = f"WAF certificate '{waf_cert.name}' obtained, "
+    active = '(active)' if waf_cert.is_active else ''
+    msg = f"WAF certificate '{waf_cert.name}' obtained {active}, "
     msg += f"expires at {waf_cert.expires_at}"
     logging.info(msg)
 
@@ -245,7 +248,8 @@ def get_local_certificate() -> LocalCertificate:
                 # load as separate lines, removing line endings
                 file_lines = [line.strip() for line in tls_file.readlines()]
         except Exception:
-            logging.error(f"failed to read local {file_type} at {FILE_PATH}")
+            logging.error(
+                "failed to read local %s at %s", file_type, FILE_PATH)
             abort(ExitCode.GET_LOCAL_CERT_ERROR)
 
         # join lines in a single str, using "\n" to concatenate (same as WAF)
@@ -311,7 +315,7 @@ def update_waf_certificate(
             "error_code": e.error_code,
             "error_msg": e.error_msg
         }
-        logging.error("failed to update certificate content -", debug_info)
+        logging.error("failed to update certificate content - %s", debug_info)
         abort(ExitCode.UPDATE_WAF_CERT_ERROR)
 
 
@@ -342,7 +346,7 @@ def switchover_waf_certificates(
         elif host.is_premium_type:
             premium_host_ids.append(host.id)
         else:
-            logging.error("invalid WafHost type -", host.waf_type)
+            logging.error("invalid WafHost type - %s", host.waf_type)
             abort(ExitCode.UNSPECIFIED)
 
     try:
@@ -366,7 +370,7 @@ def switchover_waf_certificates(
             "error_code": e.error_code,
             "error_msg": e.error_msg
         }
-        logging.error("failed to switchover certificate -", debug_info)
+        logging.error("failed to switchover certificate - %s", debug_info)
         abort(ExitCode.SWITCHOVER_WAF_CERT_ERROR)
 
 
@@ -408,7 +412,7 @@ def main():
         exit(0)
 
     if backup_waf_cert.content != local_cert.content:
-        logging.info(f"Updating WAF certificate {backup_waf_cert.name}...")
+        logging.info("Updating WAF certificate %s...", backup_waf_cert.name)
 
         update_waf_certificate(
             waf_client=waf_client,
