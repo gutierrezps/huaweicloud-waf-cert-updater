@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: waf-cert-updater-settings
+type: Opaque
+stringData:
+  CLOUD_SDK_AK: "..."
+  CLOUD_SDK_SK: "..."
+  CLOUD_REGION: "sa-brazil-1"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: waf-cert-updater-example-domain
+spec:
+  schedule: "0 0 * * *"  # Runs at midnight every day
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: waf-cert-updater
+            image: your-image:tag  # Replace with your actual image
+            envFrom:
+            - secretRef:
+                name: waf-cert-updater-settings
+            env:
+            - name: WAF_CERTIFICATE_A_ID
+              value: "..."
+            - name: WAF_CERTIFICATE_B_ID
+              value: "..."
+            volumeMounts:
+            - name: tls-certificate
+              mountPath: "/usr/src/app/cert/"
+              readOnly: true
+          restartPolicy: OnFailure
+          volumes:
+          - name: tls-certificate
+            secret:
+              secretName: tls-certificate-secret  # Managed by cert-manager
+              items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
