@@ -1,11 +1,20 @@
 # Huawei Cloud WAF certificate updater
 
 This repository contains an automation script to update the TLS certificate
-and private key configured in a
-[Huawei Cloud Web Application Firewall (WAF)][waf] instance, by loading the
-updated contents from local files.
+and private key configured in a [Huawei Cloud Web Application Firewall (WAF)][waf]
+instance, by loading the updated contents from local files.
 
-## Explanation
+## Suggested usage
+
+If you have a Kubernetes application and use [cert-manager](https://cert-manager.io/)
+to manage TLS certificates, you can do the following:
+
+1. Build a Docker image and push to the container registry of your choice
+   (example with [Huawei Cloud Software Repository for Container (SWR)][swr-qs]);
+2. Deploy in your Kubernetes cluster as a CronJob that runs once a day
+   (see `kubernetes-manifest.yaml` as an example).
+
+## How the automation works
 
 Since it's not possible to update the active certificate directly, two
 certificates (A and B) should be registered in the WAF instance, where one of
@@ -74,6 +83,14 @@ When AK/SK is invalid:
 
 ## IAM user permissions required
 
+According to the [best practices for using IAM][iam-best-practices], it is a
+standard security measure to grant users only the permissions required to
+perform specific tasks. The principle of least privilege (PoLP) helps you
+establish secure access to your Huawei Cloud resources.
+
+Therefore, an IAM user should be created exclusively for this automation, with
+the following [IAM policy][iam-policy] assigned:
+
 ```json
 {
   "Version": "1.1",
@@ -92,3 +109,6 @@ When AK/SK is invalid:
 ```
 
 [waf]: <https://support.huaweicloud.com/intl/en-us/waf/index.html>
+[swr-qs]: <https://support.huaweicloud.com/intl/en-us/qs-swr/index.html>
+[iam-best-practices]: <https://support.huaweicloud.com/intl/en-us/bestpractice-iam/iam_0426.html>
+[iam-policy]: <https://support.huaweicloud.com/intl/en-us/usermanual-iam/iam_01_0605.html>
