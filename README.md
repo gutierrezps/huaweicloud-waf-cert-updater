@@ -14,6 +14,17 @@ to manage TLS certificates, you can do the following:
 2. Deploy in your Kubernetes cluster as a CronJob that runs once a day
    (see `kubernetes-manifest.yaml` as an example).
 
+To manually run the CronJob without waiting for the scheduled time, use the
+following command:
+
+```shell
+kubectl create job --from=cronjob/waf-cert-updater-example-domain \
+  waf-cert-updater-example-domain-manual-$(date +%s) -n istio-system
+```
+
+Please note that if several certificates are managed by cert-manager, you need
+to deploy one CronJob for each certificate.
+
 ## How the automation works
 
 Since it's not possible to update the active certificate directly, two
