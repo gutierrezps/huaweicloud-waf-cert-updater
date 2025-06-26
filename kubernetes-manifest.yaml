@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: waf-cert-updater-settings
+  namespace: istio-system  # Same namespace as certificate secret
 type: Opaque
 stringData:
   CLOUD_SDK_AK: "..."
@@ -12,6 +13,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: waf-cert-updater-example-domain
+  namespace: istio-system  # Same namespace as certificate secret
 spec:
   schedule: "0 0 * * *"  # Runs at midnight every day
   jobTemplate:
@@ -34,6 +36,8 @@ spec:
               mountPath: "/usr/src/app/cert/"
               readOnly: true
           restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: default-secret  # If using Huawei Cloud SWR as container registry
           volumes:
           - name: tls-certificate
             secret:
