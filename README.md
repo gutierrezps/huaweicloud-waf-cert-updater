@@ -70,8 +70,8 @@ For reference, below are listed some example log messages.
 When nothing needs to be done:
 
 ```plain
-2025-06-23 11:14:24,615 INFO WAF certificate 'example-cert-name_certA' obtained (active), expires at 2026-06-23 10:56:26
-2025-06-23 11:14:24,906 INFO WAF certificate 'example-cert-name_certB' obtained , expires at 2026-06-23 10:49:18
+2025-06-23 11:14:24,615 INFO WAF certificate "example-cert-name_certA" obtained (active), expires at 2026-06-23 10:56:26
+2025-06-23 11:14:24,906 INFO WAF certificate "example-cert-name_certB" obtained , expires at 2026-06-23 10:49:18
 2025-06-23 11:14:24,907 INFO Active WAF cert is the same as local cert
 2025-06-23 11:14:24,907 INFO No action is needed. Bye.
 ```
@@ -79,9 +79,9 @@ When nothing needs to be done:
 When the WAF certificate is updated:
 
 ```plain
-2025-06-23 11:51:28,790 INFO WAF certificate 'example-cert-name_certA' obtained (active), expires at 2026-06-23 10:56:26
-2025-06-23 11:51:29,088 INFO WAF certificate 'example-cert-name_certB' obtained , expires at 2026-06-23 10:49:18
-2025-06-23 11:51:29,089 INFO Updating WAF certificate example-cert-name_certB...
+2025-06-23 11:51:28,790 INFO WAF certificate "example-cert-name_certA" obtained (active), expires at 2026-06-23 10:56:26
+2025-06-23 11:51:29,088 INFO WAF certificate "example-cert-name_certB" obtained , expires at 2026-06-23 10:49:18
+2025-06-23 11:51:29,089 INFO Updating WAF certificate "example-cert-name_certB"...
 2025-06-23 11:51:30,802 INFO Update and switchover performed successfully
 ```
 
