@@ -354,8 +354,8 @@ def switchover_waf_certificates(
             updated with the contents from the local certificate, using
             update_waf_certificate()
     """
-    cloud_host_ids: list[str] = []
-    premium_host_ids: list[str] = []
+    cloud_host_ids: list[str] | None = []
+    premium_host_ids: list[str] | None = []
 
     for host in active_cert.hosts_bound:
         # A certificate can be assigned to multiple WAF domains, and
@@ -373,14 +373,15 @@ def switchover_waf_certificates(
         request = ApplyCertificateToHostRequest()
         request.certificate_id = standby_cert.id
 
-        if len(cloud_host_ids) > 0:
-            request.body = ApplyCertificateToHostRequestBody(
-                cloud_host_ids=cloud_host_ids
-            )
+        if len(cloud_host_ids) == 0:
+            cloud_host_ids = None
 
-        if len(premium_host_ids) > 0:
-            request.body = ApplyCertificateToHostRequestBody(
-                premium_host_ids=premium_host_ids
+        if len(premium_host_ids) == 0:
+            premium_host_ids = None
+
+        request.body = ApplyCertificateToHostRequestBody(
+            cloud_host_ids=cloud_host_ids,
+            premium_host_ids=premium_host_ids
             )
 
         waf_client.apply_certificate_to_host(request)
